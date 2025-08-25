@@ -253,6 +253,58 @@ async fn main() -> Result<()> {
 
     //
     //
+    //regexp_extract examples
+    //
+    //
+    // regexp_extract format is (regexp_extract(text, regex, idx)
+    //
+
+    let result = ctx
+        .sql(r"select regexp_extract('needle in the haystack', '(need)le', 1)")
+        .await?
+        .collect()
+        .await?;
+
+    assert_batches_eq!(
+        &[
+    "+--------------------------------------------------------------------------+",
+    "| regexp_extract(Utf8(\"needle in the haystack\"),Utf8(\"(need)le\"),Int64(1)) |",
+    "+--------------------------------------------------------------------------+",
+    "| need                                                                     |",
+    "+--------------------------------------------------------------------------+",
+        ],
+        &result
+    );
+
+    let result = ctx
+        .sql(r"select regexp_extract(values, '[a-zA-Z]ö[a-zA-Z]{2}', 0) from examples")
+        .await?
+        .collect()
+        .await?;
+
+    assert_batches_eq!(
+        &[
+    "+-----------------------------------------------------------------------+",
+    "| regexp_extract(examples.values,Utf8(\"[a-zA-Z]ö[a-zA-Z]{2}\"),Int64(0)) |",
+    "+-----------------------------------------------------------------------+",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "|                                                                       |",
+    "| Köln                                                                  |",
+    "|                                                                       |",
+    "+-----------------------------------------------------------------------+",
+        ],
+        &result
+    );
+
+    //
+    //
     //regexp_replace examples
     //
     //
