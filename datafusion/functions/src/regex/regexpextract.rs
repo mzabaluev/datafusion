@@ -36,7 +36,7 @@ use std::sync::Arc;
     sql_example = r#"```sql
             > select regexp_extract(values, ('[a-zA-Z]ö[a-zA-Z]{2}'), 0);
             +---------------------------------------------------------+
-            | regexp_match(examples.values,Utf8("[a-zA-Z]ö[a-zA-Z]{2}", 0)) |
+            | regexp_extract(examples.values,Utf8("[a-zA-Z]ö[a-zA-Z]{2}", 0)) |
             +---------------------------------------------------------+
             | [Köln]                                                  |
             +---------------------------------------------------------+
