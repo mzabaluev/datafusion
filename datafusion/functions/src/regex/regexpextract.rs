@@ -199,9 +199,9 @@ mod tests {
     use arrow::array::{StringBuilder};
 
     #[test]
-    fn test_regexp_extract() {
+    fn test_regexp_extract_capture_group() {
         let values = StringArray::from(vec!["abc", "def"]);
-        let pattern = "^(a)";
+        let pattern = "^(a)b";
 
         let mut expected_builder = StringBuilder::new();
         expected_builder.append_value("a");
@@ -212,4 +212,35 @@ mod tests {
 
         assert_eq!(re.as_ref(), &expected);
     }
+
+    #[test]
+    fn test_regexp_extract_whole_match() {
+        let values = StringArray::from(vec!["abc", "def"]);
+        let pattern = "^a(b)";
+
+        let mut expected_builder = StringBuilder::new();
+        expected_builder.append_value("ab");
+        expected_builder.append_value("");
+        let expected = expected_builder.finish();
+
+        let re = regexp_extract(values.iter(), pattern, 0).unwrap();
+
+        assert_eq!(re.as_ref(), &expected);
+    }
+
+    #[test]
+    fn test_regexp_extract_no_such_group() {
+        let values = StringArray::from(vec!["abc", "def"]);
+        let pattern = "^(a)b";
+
+        let mut expected_builder = StringBuilder::new();
+        expected_builder.append_value("");
+        expected_builder.append_value("");
+        let expected = expected_builder.finish();
+
+        let re = regexp_extract(values.iter(), pattern, 2).unwrap();
+
+        assert_eq!(re.as_ref(), &expected);
+    }
+
 }
