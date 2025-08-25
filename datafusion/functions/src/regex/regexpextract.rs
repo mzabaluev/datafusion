@@ -20,7 +20,7 @@
 use super::compile_regex;
 use arrow::array::{StringArray, Array, ArrayRef, AsArray};
 use arrow::datatypes::DataType;
-use datafusion_common::{exec_err, plan_err};
+use datafusion_common::{exec_err, plan_err, DataFusionError};
 use datafusion_common::{ScalarValue, Result};
 use datafusion_expr::{ColumnarValue, Documentation, TypeSignature};
 use datafusion_expr::{ScalarUDFImpl, Signature, Volatility};
@@ -76,9 +76,10 @@ impl RegexpExtractFunc {
             signature: Signature::one_of(
                 vec![
                     // Planner attempts coercion to the target type starting with the most preferred candidate.
-                    TypeSignature::Exact(vec![Utf8View, Utf8, UInt32]),
-                    TypeSignature::Exact(vec![Utf8, Utf8, UInt32]),
-                    TypeSignature::Exact(vec![LargeUtf8, Utf8, UInt32]),
+                    // FIXME: we'd really be fine with UInt32, but I don't have time to learn about coercions.
+                    TypeSignature::Exact(vec![Utf8View, Utf8, Int64]),
+                    TypeSignature::Exact(vec![Utf8, Utf8, Int64]),
+                    TypeSignature::Exact(vec![LargeUtf8, Utf8, Int64]),
                 ],
                 Volatility::Immutable,
             ),
@@ -132,8 +133,9 @@ impl ScalarUDFImpl for RegexpExtractFunc {
                 "the pattern argument in regexp_extract is expected to be a scalar"
             ),
         };
-        let idx = match args.next().unwrap() {
-            ColumnarValue::Scalar(ScalarValue::UInt32(Some(i))) => i as usize,
+        let idx: usize = match args.next().unwrap() {
+            ColumnarValue::Scalar(ScalarValue::Int64(Some(i))) => i.try_into().map_err(|e|
+                DataFusionError::Plan(format!("invalid index argument for regexp_extract: {e}")))?,
             ColumnarValue::Scalar(v) => return exec_err!(
                 "unexpected index argument {v:?} for regexp_extract"
             ),
