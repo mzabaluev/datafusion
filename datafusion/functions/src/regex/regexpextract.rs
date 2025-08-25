@@ -16,15 +16,15 @@
 // under the License.
 
 //! Regex expressions
+
+use super::compile_regex;
 use arrow::array::{StringArray, Array, ArrayRef, AsArray};
 use arrow::datatypes::DataType;
 use datafusion_common::{exec_err, plan_err};
-use datafusion_common::{ScalarValue, DataFusionError, Result};
+use datafusion_common::{ScalarValue, Result};
 use datafusion_expr::{ColumnarValue, Documentation, TypeSignature};
 use datafusion_expr::{ScalarUDFImpl, Signature, Volatility};
 use datafusion_macros::user_doc;
-
-use regex::Regex;
 
 use std::any::Any;
 use std::sync::Arc;
@@ -172,7 +172,7 @@ impl ScalarUDFImpl for RegexpExtractFunc {
 }
 
 fn regexp_extract<'a>(values: impl Iterator<Item = Option<&'a str>>, pattern: &str, idx: usize) -> Result<ArrayRef> {
-    let re = Regex::new(pattern).map_err(|e| DataFusionError::Plan(format!("invalid regular expression for regexp_extract: {e}")))?;
+    let re = compile_regex(pattern, None)?;
     let mut extracts = Vec::new();
     for v in values {
         if let Some(s) = v {
