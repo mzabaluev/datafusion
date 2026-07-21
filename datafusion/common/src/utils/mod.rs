@@ -429,16 +429,9 @@ where
     if n < offsets.len() - n {
         let prefix: Vec<O> = offsets[..=n].into();
         // Shift the remaining offsets in place so that the first offset is 0.
-        let dst = offsets.as_mut_ptr();
-        for (i, &offset) in offsets[n..].iter().enumerate() {
-            // SAFETY: the range of iteration is within `offsets.len()`.
-            // In the overlapping region, the destination element is overwritten
-            // only after it is read from.
-            unsafe {
-                *dst.add(i) = offset - cut_offset;
-            }
-        }
+        offsets.copy_within(n.., 0);
         offsets.truncate(offsets.len() - n);
+        offsets.iter_mut().for_each(|o| *o = o.sub(cut_offset));
         prefix
     } else {
         let remaining = offsets[n..]
