@@ -262,6 +262,10 @@ struct ExternalSorter {
     /// How much memory to reserve for performing in-memory sort/merges
     /// prior to spilling.
     sort_spill_reservation_bytes: usize,
+
+    /// Whether the *output* merge stream may emit batches smaller than
+    /// `batch_size` in order to pass input batches straight through.
+    partial_batches_on_output_stream_enabled: bool,
 }
 
 impl ExternalSorter {
@@ -310,7 +314,17 @@ impl ExternalSorter {
             batch_size,
             sort_spill_reservation_bytes,
             sort_in_place_threshold_bytes,
+            partial_batches_on_output_stream_enabled: false,
         })
+    }
+
+    pub fn with_partial_batches_on_output_stream_enabled(
+        mut self,
+        enabled: bool,
+    ) -> Self {
+        self.partial_batches_on_output_stream_enabled = enabled;
+
+        self
     }
 
     /// Appends an unsorted [`RecordBatch`] to `in_mem_batches`
@@ -367,6 +381,7 @@ impl ExternalSorter {
                 .with_batch_size(self.batch_size)
                 .with_fetch(None)
                 .with_reservation(self.merge_reservation.take())
+                .with_allow_partial_batches(self.partial_batches_on_output_stream_enabled)
                 .build()
         } else {
             // Release the memory reserved for merge back to the pool so
@@ -664,6 +679,10 @@ impl ExternalSorter {
             .with_batch_size(self.batch_size)
             .with_fetch(None)
             .with_reservation(self.merge_reservation.new_empty())
+            // Only allow if output stream
+            .with_allow_partial_batches(
+                self.partial_batches_on_output_stream_enabled && is_output_stream,
+            )
             .build()
     }
 
@@ -947,6 +966,10 @@ pub struct SortExec {
     /// If `fetch` is `Some`, this will also be set and a TopK operator may be used.
     /// If `fetch` is `None`, this will be `None`.
     filter: Option<Arc<RwLock<TopKDynamicFilters>>>,
+
+    /// Whether the output stream may emit batches smaller than the configured
+    /// batch size in order to pass input batches straight through.
+    partial_batches_on_output_stream_enabled: bool,
 }
 
 impl SortExec {
@@ -966,7 +989,16 @@ impl SortExec {
             common_sort_prefix: sort_prefix,
             cache: Arc::new(cache),
             filter: None,
+            partial_batches_on_output_stream_enabled: false,
         }
+    }
+
+    pub fn with_partial_batches_on_output_stream_enabled(
+        mut self,
+        enabled: bool,
+    ) -> Self {
+        self.partial_batches_on_output_stream_enabled = enabled;
+        self
     }
 
     /// Whether this `SortExec` preserves partitioning of the children
@@ -1042,6 +1074,8 @@ impl SortExec {
             fetch: self.fetch,
             cache: Arc::clone(&self.cache),
             filter: self.filter.clone(),
+            partial_batches_on_output_stream_enabled: self
+                .partial_batches_on_output_stream_enabled,
         }
     }
 
@@ -1388,7 +1422,10 @@ impl ExecutionPlan for SortExec {
                     context.session_config().spill_compression(),
                     &self.metrics_set,
                     context.runtime_env(),
-                )?;
+                )?
+                .with_partial_batches_on_output_stream_enabled(
+                    self.partial_batches_on_output_stream_enabled,
+                );
                 Ok(Box::pin(RecordBatchStreamAdapter::new(
                     self.schema(),
                     futures::stream::once(async move {

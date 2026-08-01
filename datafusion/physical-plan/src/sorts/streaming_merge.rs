@@ -43,7 +43,7 @@ macro_rules! primitive_merge_helper {
 }
 
 macro_rules! merge_helper {
-    ($t:ty, $sort:ident, $streams:ident, $schema:ident, $tracking_metrics:ident, $batch_size:ident, $fetch:ident, $reservation:ident, $enable_round_robin_tie_breaker:ident) => {{
+    ($t:ty, $sort:ident, $streams:ident, $schema:ident, $tracking_metrics:ident, $batch_size:ident, $fetch:ident, $reservation:ident, $enable_round_robin_tie_breaker:ident, $allow_partial_batches:ident) => {{
         let streams =
             FieldCursorStream::<$t>::new($sort, $streams, $reservation.new_empty());
         return Ok(SortPreservingMergeStream::new(
@@ -55,6 +55,7 @@ macro_rules! merge_helper {
             $reservation,
             $enable_round_robin_tie_breaker,
         )
+        .with_allow_partial_batches($allow_partial_batches)
         .into_stream());
     }};
 }
@@ -96,6 +97,7 @@ pub struct StreamingMergeBuilder<'a> {
     fetch: Option<usize>,
     reservation: Option<MemoryReservation>,
     enable_round_robin_tie_breaker: bool,
+    allow_partial_batches: bool,
 }
 
 impl<'a> StreamingMergeBuilder<'a> {
@@ -108,6 +110,13 @@ impl<'a> StreamingMergeBuilder<'a> {
 
     pub fn with_streams(mut self, streams: Vec<SendableRecordBatchStream>) -> Self {
         self.streams = streams;
+        self
+    }
+
+    /// Allow emitting batches smaller than `batch_size` so a winning input
+    /// batch can be passed through without interleaving it row-by-row.
+    pub fn with_allow_partial_batches(mut self, allow_partial_batches: bool) -> Self {
+        self.allow_partial_batches = allow_partial_batches;
         self
     }
 
@@ -189,6 +198,7 @@ impl<'a> StreamingMergeBuilder<'a> {
             fetch,
             expressions,
             enable_round_robin_tie_breaker,
+            allow_partial_batches,
         } = self;
 
         // Early return if expressions are empty:
@@ -226,6 +236,7 @@ impl<'a> StreamingMergeBuilder<'a> {
                 fetch,
                 enable_round_robin_tie_breaker,
             )
+            .with_allow_partial_batches(allow_partial_batches)
             .create_spillable_merge_stream());
         }
 
@@ -245,12 +256,12 @@ impl<'a> StreamingMergeBuilder<'a> {
             let sort = expressions[0].clone();
             let data_type = sort.expr.data_type(schema.as_ref())?;
             downcast_primitive! {
-                data_type => (primitive_merge_helper, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker),
-                DataType::Utf8 => merge_helper!(StringArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker)
-                DataType::Utf8View => merge_helper!(StringViewArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker)
-                DataType::LargeUtf8 => merge_helper!(LargeStringArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker)
-                DataType::Binary => merge_helper!(BinaryArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker)
-                DataType::LargeBinary => merge_helper!(LargeBinaryArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker)
+                data_type => (primitive_merge_helper, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches),
+                DataType::Utf8 => merge_helper!(StringArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches)
+                DataType::Utf8View => merge_helper!(StringViewArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches)
+                DataType::LargeUtf8 => merge_helper!(LargeStringArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches)
+                DataType::Binary => merge_helper!(BinaryArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches)
+                DataType::LargeBinary => merge_helper!(LargeBinaryArray, sort, streams, schema, metrics, batch_size, fetch, reservation, enable_round_robin_tie_breaker, allow_partial_batches)
                 _ => {}
             }
         }
@@ -270,6 +281,7 @@ impl<'a> StreamingMergeBuilder<'a> {
             reservation,
             enable_round_robin_tie_breaker,
         )
+        .with_allow_partial_batches(allow_partial_batches)
         .into_stream())
     }
 }

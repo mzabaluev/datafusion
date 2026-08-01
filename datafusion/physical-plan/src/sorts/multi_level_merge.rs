@@ -155,6 +155,7 @@ pub(crate) struct MultiLevelMergeBuilder {
     reservation: MemoryReservation,
     fetch: Option<usize>,
     enable_round_robin_tie_breaker: bool,
+    allow_partial_batches: bool,
 }
 
 impl Debug for MultiLevelMergeBuilder {
@@ -193,7 +194,18 @@ impl MultiLevelMergeBuilder {
             reservation,
             enable_round_robin_tie_breaker,
             fetch,
+            allow_partial_batches: false,
         }
+    }
+
+    /// Allow the *output* merge stream to emit batches smaller than
+    /// `batch_size` so a winning input batch can be passed through as-is.
+    pub(crate) fn with_allow_partial_batches(
+        mut self,
+        allow_partial_batches: bool,
+    ) -> Self {
+        self.allow_partial_batches = allow_partial_batches;
+        self
     }
 
     pub(crate) fn create_spillable_merge_stream(self) -> SendableRecordBatchStream {
@@ -441,7 +453,8 @@ impl MultiLevelMergeBuilder {
                 self.metrics.intermediate()
             })
             .with_round_robin_tie_breaker(self.enable_round_robin_tie_breaker)
-            .with_streams(streams);
+            .with_streams(streams)
+            .with_allow_partial_batches(self.allow_partial_batches && is_output);
 
         if !all_in_memory {
             // Don't track memory used by this stream as we reserve that memory by worst case sceneries
